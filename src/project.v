@@ -1,27 +1,72 @@
-/*
- * Copyright (c) 2024 Your Name
- * SPDX-License-Identifier: Apache-2.0
- */
-
-`default_nettype none
-
-module tt_um_example (
-    input  wire [7:0] ui_in,    // Dedicated inputs
-    output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
-    output wire [7:0] uio_out,  // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
-    input  wire       ena,      // always 1 when the design is powered, so you can ignore it
-    input  wire       clk,      // clock
-    input  wire       rst_n     // reset_n - low to reset
+module tt_um_tina_onboarding (
+    input  wire [7:0] ui_in,
+    output reg  [7:0] uo_out,
+    input  wire [7:0] uio_in,
+    output reg  [7:0] uio_out,
+    output reg  [7:0] uio_oe,
+    input  wire       ena,
+    input  wire       clk,
+    input  wire       rst_n
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+    // ui_in[0] = SCLK
+    // ui_in[1] = MOSI
+    // ui_in[2] = nCS (active low)
 
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
+    reg [15:0] shift_reg;
+    reg [4:0]  bit_count;
+
+    reg [7:0] reg0;
+    reg [7:0] reg1;
+
+    reg sclk_d;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            shift_reg <= 16'h0000;
+            bit_count <= 0;
+            reg0 <= 8'h00;
+            reg1 <= 8'h00;
+            uo_out <= 8'h00;
+            uio_out <= 8'h00;
+            uio_oe <= 8'hFF;
+            sclk_d <= 0;
+        end else begin
+            uio_oe <= 8'hFF;
+
+            // Reset receiver when CS is high
+            if (ui_in[2]) begin
+                bit_count <= 0;
+            end
+
+            // detect rising edge of SCLK (ui_in[0]) while CS low (ui_in[2]==0)
+            sclk_d <= ui_in[0];
+            if (!ui_in[2] && !sclk_d && ui_in[0]) begin
+                // form the next shift_reg including *this* MOSI bit
+                reg [15:0] next_shift;
+                next_shift = {shift_reg[14:0], ui_in[1]};
+                shift_reg <= next_shift;
+
+                if (bit_count == 15) begin
+                    // next_shift now contains the full 16-bit word:
+                    // [15]=R/W, [14:8]=addr, [7:0]=data
+                    if (next_shift[15]) begin
+                        if (next_shift[14:8] == 7'h00)
+                            reg0 <= next_shift[7:0];
+                        else if (next_shift[14:8] == 7'h01)
+                            reg1 <= next_shift[7:0];
+                    end
+                    bit_count <= 0;
+                end else begin
+                    bit_count <= bit_count + 1;
+                end
+            end
+
+
+            uo_out <= reg0;
+            uio_out <= reg1;
+        end
+    end
 
 endmodule
+
