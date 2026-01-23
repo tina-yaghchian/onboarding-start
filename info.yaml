@@ -3,9 +3,9 @@ project:
   title:        "UWASIC Onboarding"
   author:       "Tina Yaghchian"
   discord:      "tina_ygh"
-  description:  "UWASIC onboarding starter project"      # One line description of what your project does
+  description:  "Write-only SPI peripheral with addressable registers"      # One line description of what your project does
   language:     "Verilog"
-  clock_hz:     0       
+  clock_hz:     10000000       
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
   tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
