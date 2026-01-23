@@ -1,8 +1,8 @@
 ## How it works
 
 This project implements a write-only SPI peripheral operating in SPI mode 0.
-The SPI interface receives 16-bit transactions consisting of:
 
+The SPI interface receives 16-bit transactions consisting of:
 - 1-bit Read/Write flag (writes only are supported)
 - 7-bit address
 - 8-bit data
@@ -24,11 +24,8 @@ To run the tests locally:
 1. Activate the Python virtual environment
 2. Run `make -C test`
 
-The SPI test performs multiple write transactions and checks that outputs
-update correctly. Additional tests validate PWM behavior.
+The SPI test performs multiple write transactions and checks that outputs update correctly.
 
 ## External hardware
 
-No external hardware is required. The design is fully self-contained and
-intended for simulation and ASIC synthesis.
-
+No external hardware is required.
