@@ -1,20 +1,34 @@
-<!---
-
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
-
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
-
 ## How it works
 
-Explain how your project works
+This project implements a write-only SPI peripheral operating in SPI mode 0.
+The SPI interface receives 16-bit transactions consisting of:
+
+- 1-bit Read/Write flag (writes only are supported)
+- 7-bit address
+- 8-bit data
+
+SPI signals (nCS, SCLK, COPI/MOSI) are synchronized into the system clock domain.
+Bits are shifted in on the rising edge of SCLK while nCS is low.
+Registers are updated only after a complete transaction has been received.
+
+Address map:
+- Address 0x00: updates `uo_out`
+- Address 0x01: updates `uio_out`
+- Other addresses are ignored
 
 ## How to test
 
-Explain how to use your project
+The design is verified using cocotb-based Python tests.
+
+To run the tests locally:
+1. Activate the Python virtual environment
+2. Run `make -C test`
+
+The SPI test performs multiple write transactions and checks that outputs
+update correctly. Additional tests validate PWM behavior.
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+No external hardware is required. The design is fully self-contained and
+intended for simulation and ASIC synthesis.
+
