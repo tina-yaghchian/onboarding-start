@@ -1,5 +1,75 @@
 # Tiny Tapeout project information
 project:
+  title:        "UWASIC Onboarding – SPI Peripheral"
+  author:       "Tina Yaghchian"
+  discord:      "tina_ygh"
+  description:  "Write-only SPI peripheral with addressable registers and PWM output"
+  language:     "Verilog"
+  clock_hz:     10000000
+
+  # How many tiles your design occupies?
+  tiles: "1x1"
+
+  # Top module (must start with tt_um_)
+  top_module:  tt_um_tina_onboarding
+
+  # RTL source files (KEEP THIS EXACT FORMAT)
+  source_files: [src/project.v]
+
+# Pinout for Tiny Tapeout
+# Do NOT remove pins — leave unused ones blank
+pinout:
+  ui_in:
+    - nCS
+    - COPI
+    - SCLK
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+
+  uo_out:
+    - OUT0
+    - OUT1
+    - OUT2
+    - OUT3
+    - OUT4
+    - OUT5
+    - OUT6
+    - OUT7
+
+  uio_in:
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+
+  uio_out:
+    - PWM
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+
+  uio_oe:
+    - PWM_OE
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+# Tiny Tapeout project information
+project:
   title:        "UWASIC Onboarding"
   author:       "Tina Yaghchian"
   discord:      "tina_ygh"
