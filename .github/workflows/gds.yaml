@@ -38,6 +38,7 @@ jobs:
         uses: TinyTapeout/tt-gds-action/gl_test@tt10
 
   viewer:
+    if: false
     needs: gds
     runs-on: ubuntu-24.04
     permissions:
