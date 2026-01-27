@@ -11,35 +11,27 @@ module tt_um_tina_onboarding (
 
     // ui_in[0] = SCLK
     // ui_in[1] = MOSI (COPI)
-    // ui_in[2] = nCS  (active low)
+    // ui_in[2] = nCS (active low)
 
-    // Synchronize ONLY SCLK and MOSI into clk domain (optional but nice)
+    // synchronize SCLK and MOSI (nCS used directly to avoid latency)
     reg sclk_meta, sclk_sync;
     reg mosi_meta, mosi_sync;
 
-    // Use nCS directly (no 2-FF delay), but still edge-detect in clk domain
-    reg cs_d;
+    // "saw SCLK high" latch while CS low
+    reg sclk_seen;
 
-    // Edge detect for SCLK in clk domain
-    reg sclk_d;
-
-    // SPI receive state
     reg [4:0]  bit_count;
     reg [15:0] rx_word;
 
-    // Output registers
     reg [7:0] reg0;
     reg [7:0] reg1;
 
     always @(negedge rst_n or posedge clk) begin
         if (!rst_n) begin
-            sclk_meta <= 1'b0;
-            sclk_sync <= 1'b0;
-            mosi_meta <= 1'b0;
-            mosi_sync <= 1'b0;
+            sclk_meta <= 1'b0; sclk_sync <= 1'b0;
+            mosi_meta <= 1'b0; mosi_sync <= 1'b0;
 
-            sclk_d    <= 1'b0;
-            cs_d      <= 1'b1;
+            sclk_seen <= 1'b0;
 
             bit_count <= 5'd0;
             rx_word   <= 16'h0000;
@@ -51,45 +43,46 @@ module tt_um_tina_onboarding (
             uio_out   <= 8'h00;
             uio_oe    <= 8'hFF;
         end else begin
-            // Always drive uio pins as outputs
+            // drive outputs
             uio_oe <= 8'hFF;
+            uo_out <= reg0;
+            uio_out <= reg1;
 
-            // Sync SCLK/MOSI
-            sclk_meta <= ui_in[0];
-            sclk_sync <= sclk_meta;
-            mosi_meta <= ui_in[1];
-            mosi_sync <= mosi_meta;
+            // sync SCLK/MOSI into clk domain
+            sclk_meta <= ui_in[0];  sclk_sync <= sclk_meta;
+            mosi_meta <= ui_in[1];  mosi_sync <= mosi_meta;
 
-            // Track previous values for edge detection
-            sclk_d <= sclk_sync;
-            cs_d   <= ui_in[2];      // nCS direct
+            if (!ui_in[2]) begin
+                // CS low: receiving bits
+                if (sclk_sync)
+                    sclk_seen <= 1'b1;
 
-            // --- Shift on SCLK rising edge while nCS is low ---
-            if (!ui_in[2] && !sclk_d && sclk_sync) begin
-                // Test sends MSB-first; this shift builds the correct 16-bit word
-                rx_word   <= {rx_word[14:0], mosi_sync};
-                bit_count <= bit_count + 5'd1;
-            end
+                // count one bit when we've seen SCLK high and it returns low
+                if (!sclk_sync && sclk_seen) begin
+                    sclk_seen <= 1'b0;
 
-            // --- Commit on nCS rising edge (end of transaction) ---
-            if (!cs_d && ui_in[2]) begin
+                    // shift in one bit (MSB-first as sent by test)
+                    rx_word   <= {rx_word[14:0], mosi_sync};
+                    bit_count <= bit_count + 5'd1;
+                end
+            end else begin
+                // CS high: commit at end of transaction
+                sclk_seen <= 1'b0;
+
                 if (bit_count == 5'd16) begin
-                    // frame: [15:8]=addr, [7:0]=data
+                    // Handle both layouts to be safe:
+                    // A [15:8]=addr, [7:0]=data
                     if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
                     else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
-                    // tolerate swapped order just in case
-                    else if (rx_word[7:0]  == 8'h00) reg0 <= rx_word[15:8];
-                    else if (rx_word[7:0]  == 8'h01) reg1 <= rx_word[15:8];
+                    // B [15:8]=data, [7:0]=addr
+                    else if (rx_word[7:0] == 8'h00) reg0 <= rx_word[15:8];
+                    else if (rx_word[7:0] == 8'h01) reg1 <= rx_word[15:8];
                 end
 
-                // reset SPI state
+                // reset for next transaction
                 bit_count <= 5'd0;
                 rx_word   <= 16'h0000;
             end
-
-            // Outputs reflect registers
-            uo_out  <= reg0;
-            uio_out <= reg1;
         end
     end
 
