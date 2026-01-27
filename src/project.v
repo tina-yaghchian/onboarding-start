@@ -44,23 +44,26 @@ module tt_um_tina_onboarding (
 
             // While CS low, shift on SCLK rising edge
             if (!ui_in[2] && !sclk_d && ui_in[0]) begin
-                rx_word   <= {rx_word[14:0], ui_in[1]};
+                // MSB-first shift in
+                rx_word   <= {ui_in[1], rx_word[15:1]};
                 bit_count <= bit_count + 5'd1;
             end
 
             // On CS rising edge, commit if exactly 16 bits received
             if (!cs_d && ui_in[2]) begin
                 if (bit_count == 5'd16) begin
-                    // frame: [15:8] address, [7:0] data
-                    case (rx_word[15:8])
-                        8'h00: reg0 <= rx_word[7:0];
-                        8'h01: reg1 <= rx_word[7:0];
-                        default: ;
-                    endcase
+                    // Try addr=data order: [15:8]=addr, [7:0]=data
+                    if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
+                    else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
+
+                    // Also support swapped order: [15:8]=data, [7:0]=addr
+                    else if (rx_word[7:0] == 8'h00) reg0 <= rx_word[15:8];
+                    else if (rx_word[7:0] == 8'h01) reg1 <= rx_word[15:8];
                 end
                 bit_count <= 5'd0;
                 rx_word   <= 16'h0000;
             end
+
 
             // Outputs reflect registers
             uo_out  <= reg0;
