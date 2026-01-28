@@ -9,64 +9,106 @@ module tt_um_tina_onboarding (
     input  wire       rst_n
 );
 
-    // SPI pins (use uio_in because many TT cocotb tests drive SPI on uio)
-    // uio_in[0] = SCLK
-    // uio_in[1] = MOSI (COPI)
-    // uio_in[2] = nCS (active low)
-    wire spi_sclk = uio_in[0];
-    wire spi_mosi = uio_in[1];
-    wire spi_ncs  = uio_in[2];
+    // We don't know whether the test drives SPI on ui_in or uio_in.
+    // Detect "active" CS (low) and use that bus.
+    wire ui_cs  = ui_in[2];
+    wire uio_cs = uio_in[2];
 
-    reg        sclk_prev;
-    reg [4:0]  bit_count;
-    reg [15:0] rx_word;
+    wire use_uio = (uio_cs == 1'b0); // prefer uio if it's active
+
+    wire spi_sclk = use_uio ? uio_in[0] : ui_in[0];
+    wire spi_mosi = use_uio ? uio_in[1] : ui_in[1];
+    wire spi_ncs  = use_uio ? uio_in[2] : ui_in[2];
+
+    reg sclk_prev;
+
+    // Capture on both edges (rising + falling), MSB-first
+    reg [15:0] rx_rise;
+    reg [15:0] rx_fall;
+    reg [4:0]  cnt_rise;
+    reg [4:0]  cnt_fall;
 
     reg [7:0] reg0;
     reg [7:0] reg1;
+
+    // Helper task-like function: decide if a 16b word looks like {addr,data} or {data,addr}
+    // Implemented as combinational wires for synthesis friendliness.
+    wire rise_ad_ok = (rx_rise[15:8] == 8'h00) || (rx_rise[15:8] == 8'h01);
+    wire rise_da_ok = (rx_rise[7:0]  == 8'h00) || (rx_rise[7:0]  == 8'h01);
+
+    wire fall_ad_ok = (rx_fall[15:8] == 8'h00) || (rx_fall[15:8] == 8'h01);
+    wire fall_da_ok = (rx_fall[7:0]  == 8'h00) || (rx_fall[7:0]  == 8'h01);
 
     always @(negedge rst_n or posedge clk) begin
         if (!rst_n) begin
             sclk_prev <= 1'b0;
 
-            bit_count <= 5'd0;
-            rx_word   <= 16'h0000;
+            rx_rise <= 16'h0000;
+            rx_fall <= 16'h0000;
+            cnt_rise <= 5'd0;
+            cnt_fall <= 5'd0;
 
-            reg0      <= 8'h00;
-            reg1      <= 8'h00;
+            reg0 <= 8'h00;
+            reg1 <= 8'h00;
 
-            uo_out    <= 8'h00;
-            uio_out   <= 8'h00;
-            uio_oe    <= 8'h00;   // IMPORTANT: don't drive uio pins during SPI
+            uo_out  <= 8'h00;
+            uio_out <= 8'h00;
+            uio_oe  <= 8'h00;   // don't fight testbench; treat uio as inputs
         end else begin
-            // Keep uio as inputs (avoid contention with testbench driving SPI)
-            uio_oe <= 8'h00;
-
-            // Drive outputs
+            // outputs
+            uio_oe  <= 8'h00;
             uo_out  <= reg0;
             uio_out <= reg1;
 
-            // Edge detect SCLK
+            // track SCLK
             sclk_prev <= spi_sclk;
 
             if (!spi_ncs) begin
-                // CS low: sample MOSI on rising edge of SCLK
+                // CS low: shift bits
+
+                // Rising edge
                 if (!sclk_prev && spi_sclk) begin
-                    // MSB-first: first 8 bits = addr, next 8 bits = data
-                    rx_word   <= {spi_mosi, rx_word[15:1]};
-                    bit_count <= bit_count + 5'd1;
-                end
-            end else begin
-                // CS high: commit
-                if (bit_count == 5'd16) begin
-                    if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
-                    else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
+                    rx_rise  <= {spi_mosi, rx_rise[15:1]};
+                    cnt_rise <= cnt_rise + 5'd1;
                 end
 
-                // Reset for next transaction
-                bit_count <= 5'd0;
-                rx_word   <= 16'h0000;
+                // Falling edge
+                if (sclk_prev && !spi_sclk) begin
+                    rx_fall  <= {spi_mosi, rx_fall[15:1]};
+                    cnt_fall <= cnt_fall + 5'd1;
+                end
+
+            end else begin
+                // CS high: commit if we captured 16 bits on either edge
+                // Priority: rising-edge capture with {addr,data}, then rising {data,addr},
+                // then falling-edge capture with {addr,data}, then falling {data,addr}.
+
+                if (cnt_rise == 5'd16) begin
+                    if (rise_ad_ok) begin
+                        if (rx_rise[15:8] == 8'h00) reg0 <= rx_rise[7:0];
+                        else if (rx_rise[15:8] == 8'h01) reg1 <= rx_rise[7:0];
+                    end else if (rise_da_ok) begin
+                        if (rx_rise[7:0] == 8'h00) reg0 <= rx_rise[15:8];
+                        else if (rx_rise[7:0] == 8'h01) reg1 <= rx_rise[15:8];
+                    end
+                end else if (cnt_fall == 5'd16) begin
+                    if (fall_ad_ok) begin
+                        if (rx_fall[15:8] == 8'h00) reg0 <= rx_fall[7:0];
+                        else if (rx_fall[15:8] == 8'h01) reg1 <= rx_fall[7:0];
+                    end else if (fall_da_ok) begin
+                        if (rx_fall[7:0] == 8'h00) reg0 <= rx_fall[15:8];
+                        else if (rx_fall[7:0] == 8'h01) reg1 <= rx_fall[15:8];
+                    end
+                end
+
+                // reset for next transaction
+                rx_rise <= 16'h0000;
+                rx_fall <= 16'h0000;
+                cnt_rise <= 5'd0;
+                cnt_fall <= 5'd0;
             end
         end
     end
 
 endmodule
+
