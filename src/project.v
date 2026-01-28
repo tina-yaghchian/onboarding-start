@@ -13,12 +13,12 @@ module tt_um_tina_onboarding (
     // ui_in[1] = MOSI (COPI)
     // ui_in[2] = nCS (active low)
 
-    // synchronize SCLK and MOSI (nCS used directly to avoid latency)
+    // synchronize SCLK and MOSI into clk domain (use nCS directly)
     reg sclk_meta, sclk_sync;
     reg mosi_meta, mosi_sync;
 
-    // "saw SCLK high" latch while CS low
-    reg sclk_seen;
+    // previous synchronized SCLK for edge detect
+    reg sclk_prev;
 
     reg [4:0]  bit_count;
     reg [15:0] rx_word;
@@ -28,10 +28,9 @@ module tt_um_tina_onboarding (
 
     always @(negedge rst_n or posedge clk) begin
         if (!rst_n) begin
-            sclk_meta <= 1'b0; sclk_sync <= 1'b0;
-            mosi_meta <= 1'b0; mosi_sync <= 1'b0;
-
-            sclk_seen <= 1'b0;
+            sclk_meta <= 1'b0;  sclk_sync <= 1'b0;
+            mosi_meta <= 1'b0;  mosi_sync <= 1'b0;
+            sclk_prev <= 1'b0;
 
             bit_count <= 5'd0;
             rx_word   <= 16'h0000;
@@ -43,43 +42,41 @@ module tt_um_tina_onboarding (
             uio_out   <= 8'h00;
             uio_oe    <= 8'hFF;
         end else begin
-            // drive outputs
-            uio_oe <= 8'hFF;
-            uo_out <= reg0;
+            // default: drive outputs
+            uio_oe  <= 8'hFF;
+            uo_out  <= reg0;
             uio_out <= reg1;
 
             // sync SCLK/MOSI into clk domain
-            sclk_meta <= ui_in[0];  sclk_sync <= sclk_meta;
-            mosi_meta <= ui_in[1];  mosi_sync <= mosi_meta;
+            sclk_meta <= ui_in[0];
+            sclk_sync <= sclk_meta;
+
+            mosi_meta <= ui_in[1];
+            mosi_sync <= mosi_meta;
+
+            // track previous SCLK for rising-edge detection
+            sclk_prev <= sclk_sync;
 
             if (!ui_in[2]) begin
-                // CS low: receiving bits
-                if (sclk_sync)
-                    sclk_seen <= 1'b1;
-
-                // count one bit when we've seen SCLK high and it returns low
-                if (!sclk_sync && sclk_seen) begin
-                    sclk_seen <= 1'b0;
-
-                    // shift in one bit (MSB-first as sent by test)
+                // CS low: receive bits
+                // sample MOSI on SCLK rising edge (SPI mode 0 style)
+                if (!sclk_prev && sclk_sync) begin
+                    // MSB-first capture: addr then data
                     rx_word   <= {mosi_sync, rx_word[15:1]};
                     bit_count <= bit_count + 5'd1;
                 end
-                    end else begin
-                    // CS high: commit at end of transaction
-                    sclk_seen <= 1'b0;
-
-                    if (bit_count == 5'd16) begin
-                        // [15:8] = addr, [7:0] = data (MSB-first)
-                        if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
-                        else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
-                    end
-
-                    // reset for next transaction
-                    bit_count <= 5'd0;
-                    rx_word   <= 16'h0000;
+            end else begin
+                // CS high: commit at end of transaction
+                if (bit_count == 5'd16) begin
+                    // [15:8] = addr, [7:0] = data
+                    if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
+                    else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
                 end
 
+                // reset for next transaction
+                bit_count <= 5'd0;
+                rx_word   <= 16'h0000;
+            end
         end
     end
 
