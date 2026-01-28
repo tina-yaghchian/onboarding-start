@@ -62,27 +62,24 @@ module tt_um_tina_onboarding (
                     sclk_seen <= 1'b0;
 
                     // shift in one bit (MSB-first as sent by test)
-                    rx_word   <= {rx_word[14:0], mosi_sync};
+                    rx_word   <= {mosi_sync, rx_word[15:1]};
                     bit_count <= bit_count + 5'd1;
                 end
-            end else begin
-                // CS high: commit at end of transaction
-                sclk_seen <= 1'b0;
+                    end else begin
+                    // CS high: commit at end of transaction
+                    sclk_seen <= 1'b0;
 
-                if (bit_count == 5'd16) begin
-                    // Handle both layouts to be safe:
-                    // A [15:8]=addr, [7:0]=data
-                    if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
-                    else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
-                    // B [15:8]=data, [7:0]=addr
-                    else if (rx_word[7:0] == 8'h00) reg0 <= rx_word[15:8];
-                    else if (rx_word[7:0] == 8'h01) reg1 <= rx_word[15:8];
+                    if (bit_count == 5'd16) begin
+                        // [15:8] = addr, [7:0] = data (MSB-first)
+                        if (rx_word[15:8] == 8'h00) reg0 <= rx_word[7:0];
+                        else if (rx_word[15:8] == 8'h01) reg1 <= rx_word[7:0];
+                    end
+
+                    // reset for next transaction
+                    bit_count <= 5'd0;
+                    rx_word   <= 16'h0000;
                 end
 
-                // reset for next transaction
-                bit_count <= 5'd0;
-                rx_word   <= 16'h0000;
-            end
         end
     end
 
