@@ -1,113 +1,74 @@
+`default_nettype none
+
 module tt_um_spi_regs (
-    input  wire       clk,
-    input  wire       rst_n,
     input  wire [7:0] ui_in,
-    input  wire [7:0] uio_in,
     output reg  [7:0] uo_out,
+    input  wire [7:0] uio_in,
     output reg  [7:0] uio_out,
-    output reg  [7:0] uio_oe
+    output reg  [7:0] uio_oe,
+    input  wire       ena,
+    input  wire       clk,
+    input  wire       rst_n
 );
 
-    // Detect which bus is being used for SPI
-    wire ui_cs  = ui_in[2];
-    wire uio_cs = uio_in[2];
-    wire use_uio = (uio_cs == 1'b0);  // prefer uio if active
-
-    wire spi_sclk = use_uio ? uio_in[0] : ui_in[0];
-    wire spi_mosi = use_uio ? uio_in[1] : ui_in[1];
-    wire spi_ncs  = use_uio ? uio_in[2] : ui_in[2];
+    // SPI on dedicated inputs per info.yaml
+    // ui_in[0] = nCS
+    // ui_in[1] = COPI / MOSI
+    // ui_in[2] = SCLK
+    wire spi_sclk  = ui_in[0];
+    wire spi_mosi = ui_in[1];
+    wire spi_ncs = ui_in[2];
 
     reg        sclk_prev;
-
-    // Capture on both edges
-    reg [15:0] rx_rise;
-    reg [15:0] rx_fall;
-    reg [4:0]  cnt_rise;
-    reg [4:0]  cnt_fall;
+    reg [4:0]  bit_count;
+    reg [15:0] shift_reg;
 
     reg [7:0] reg0;
     reg [7:0] reg1;
 
-    // Valid address checks
-    wire rise_ad_ok = (rx_rise[15:8] == 8'h00) || (rx_rise[15:8] == 8'h01);
-    wire rise_da_ok = (rx_rise[7:0]  == 8'h00) || (rx_rise[7:0]  == 8'h01);
-
-    wire fall_ad_ok = (rx_fall[15:8] == 8'h00) || (rx_fall[15:8] == 8'h01);
-    wire fall_da_ok = (rx_fall[7:0]  == 8'h00) || (rx_fall[7:0]  == 8'h01);
-
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             sclk_prev <= 1'b0;
-
-            rx_rise   <= 16'h0000;
-            rx_fall   <= 16'h0000;
-            cnt_rise  <= 5'd0;
-            cnt_fall  <= 5'd0;
-
+            bit_count <= 5'd0;
+            shift_reg <= 16'h0000;
             reg0      <= 8'h00;
             reg1      <= 8'h00;
-
             uo_out    <= 8'h00;
             uio_out   <= 8'h00;
-            uio_oe    <= 8'h00;   // keep uio as inputs
+            uio_oe    <= 8'h00;
         end else begin
-            // keep uio pins as inputs to avoid fighting SPI driver
-            uio_oe  <= 8'h00;
-
-            // expose registers on outputs
-            uo_out  <= reg0;
-            uio_out <= reg1;
-
-            // remember previous sclk
+            // ena is present for TT compatibility; design can ignore it
             sclk_prev <= spi_sclk;
 
-            if (!spi_ncs) begin
-                // Rising edge detect
-                if (!sclk_prev && spi_sclk) begin
-                    rx_rise  <= {spi_mosi, rx_rise[15:1]};
-                    cnt_rise <= cnt_rise + 5'd1;
-                end
+            // default outputs
+            uo_out  <= reg0;
+            uio_out <= reg1;
+            uio_oe  <= 8'h00;   // keep bidir pins as inputs for now
 
-                // Falling edge detect
-                if (sclk_prev && !spi_sclk) begin
-                    rx_fall  <= {spi_mosi, rx_fall[15:1]};
-                    cnt_fall <= cnt_fall + 5'd1;
+            if (!spi_ncs) begin
+                // capture on rising edge of SCLK
+                if (!sclk_prev && spi_sclk) begin
+                    shift_reg <= {shift_reg[14:0], spi_mosi};
+                    bit_count <= bit_count + 5'd1;
                 end
             end else begin
-                // Commit when CS goes high
-                if (cnt_rise == 5'd16) begin
-                    if (rise_ad_ok) begin
-                        if (rx_rise[15:8] == 8'h00)
-                            reg0 <= rx_rise[7:0];
-                        else if (rx_rise[15:8] == 8'h01)
-                            reg1 <= rx_rise[7:0];
-                    end else if (rise_da_ok) begin
-                        if (rx_rise[7:0] == 8'h00)
-                            reg0 <= rx_rise[15:8];
-                        else if (rx_rise[7:0] == 8'h01)
-                            reg1 <= rx_rise[15:8];
-                    end
-                end else if (cnt_fall == 5'd16) begin
-                    if (fall_ad_ok) begin
-                        if (rx_fall[15:8] == 8'h00)
-                            reg0 <= rx_fall[7:0];
-                        else if (rx_fall[15:8] == 8'h01)
-                            reg1 <= rx_fall[7:0];
-                    end else if (fall_da_ok) begin
-                        if (rx_fall[7:0] == 8'h00)
-                            reg0 <= rx_fall[15:8];
-                        else if (rx_fall[7:0] == 8'h01)
-                            reg1 <= rx_fall[15:8];
+                // commit when CS goes high after 16 bits
+                if (bit_count == 5'd16) begin
+                    if (shift_reg[15]) begin
+                        case (shift_reg[14:8])
+                        7'h00: reg0 <= shift_reg[7:0];
+                        7'h01: reg1 <= shift_reg[7:0];
+                        default: begin end
+                        endcase
                     end
                 end
 
-                // Reset transaction state
-                rx_rise  <= 16'h0000;
-                rx_fall  <= 16'h0000;
-                cnt_rise <= 5'd0;
-                cnt_fall <= 5'd0;
+                bit_count <= 5'd0;
+                shift_reg <= 16'h0000;
             end
         end
     end
 
 endmodule
+
+`default_nettype wire

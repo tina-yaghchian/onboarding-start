@@ -18,9 +18,9 @@ project:
 # This section is for the datasheet/website.
 pinout:
   # Inputs (ui_in[0] is LSB)
-  ui[0]: "nCS"
+  ui[0]: "SCLK"
   ui[1]: "COPI"
-  ui[2]: "SCLK"
+  ui[2]: "nCS"
   ui[3]: ""
   ui[4]: ""
   ui[5]: ""
