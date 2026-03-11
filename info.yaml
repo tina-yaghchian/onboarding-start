@@ -9,10 +9,10 @@ project:
 
   tiles: "1x1"
 
-  top_module:  tt_um_tina_onboarding
+  top_module:  tt_um_spi_regs
 
   # Source files must be in ./src (so do NOT prefix with src/)
-  source_files: [project.v, pwm_peripheral.v]
+  source_files: [srcproject.v]
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website.
