@@ -12,7 +12,7 @@ project:
   top_module:  tt_um_spi_regs
 
   # Source files must be in ./src (so do NOT prefix with src/)
-  source_files: [srcproject.v]
+  source_files: [project.v]
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website.
